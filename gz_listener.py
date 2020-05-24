@@ -1,6 +1,8 @@
 #Navid Kayhani (navidk381) | May 20,2020
 
-'''This script listens to /gazebo/default/pose/info and prints it out on command line'''
+'''
+This script listens to /gazebo/default/pose/info and prints it out on the screen
+'''
 import trollius as asyncio
 from trollius import From
 import pygazebo
@@ -43,7 +45,9 @@ class GazeboMessageSubscriber:
         # print('Received message:', message.data)
         self.poses_stamped = pygazebo.msg.poses_stamped_pb2.PosesStamped() #check the msg for more detail (poses_stamped_pb2.py)
         s = self.poses_stamped.FromString(data)
-        print(s)
+        #for more information about the parsed Gazebo messages, please see
+        #<your_ros_ws>/gz_listener/src/py3gazebo_x/pygazebo/msg/poses_stamped_pb2.py
+        print(s.pose[0])
 
 
 def main():
