@@ -2,7 +2,7 @@
 # Navid Kayhani (navidk381) | May 20,2020
 '''This script listens to /gazebo/default/pose/info on gazebo topics
  and publishes PoseStamped messages on a ROS topic'''
-#TODO : make the ros node intrupte 
+
 import trollius as asyncio
 from trollius import From
 import pygazebo
@@ -31,6 +31,7 @@ class GazeboMessageSubscriber:
         rospy.init_node(NODE_NAME)
         self.rate = rospy.Rate(RATE)
         self.gz_publisher = GzPublisher()
+        self.gz_pose_msg = PoseStamped()
 
     @asyncio.coroutine
     def connect(self):
@@ -51,19 +52,21 @@ class GazeboMessageSubscriber:
 
             yield From(self.poses_subscriber.wait_for_connection())
             self.running = True
-            while self.running:
+            while self.running and not rospy.is_shutdown():
                 yield From(asyncio.sleep(0.1))
         else:
             raise Exception("Timeout connecting to Gazebo.")
 
     def poses_callback(self, data):
-        # check the msg for more detail (poses_stamped_pb2.py)
+        # Check the msg for more detail (poses_stamped_pb2.py)
+        # Read the message form Gazebo
         self.poses_stamped = pygazebo.msg.poses_stamped_pb2.PosesStamped()
         s = self.poses_stamped.FromString(data)
-        gz_pose_msg = s.pose[0]
-        if not rospy.is_shutdown():
-            self.gz_publisher.publish(gz_pose_msg)
-            self.rate.sleep()
+        self.gz_pose_msg = s.pose[0]
+
+        # Publish in ROS
+        self.gz_publisher.publish(self.gz_pose_msg)
+        self.rate.sleep()
 
 #############################
 
@@ -95,7 +98,7 @@ class GzPublisher(object):
 
 
     def compose_ros_PoseStamped_msg(self, gz_msg_PosesStamped):
-        # for more information about the parsed Gazebo messages, please see
+        # For more information about the parsed Gazebo messages, please see
         # <your_ros_ws>/gz_listener/src/py3gazebo_x/pygazebo/msg/poses_stamped_pb2.py ([Hint] Ctrl+p for file search in VSCode)
         # For the ROS message you should check: http://docs.ros.org/melodic/api/std_msgs/html/msg/Header.html
         msg = PoseStamped()
@@ -124,4 +127,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
