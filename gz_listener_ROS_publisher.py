@@ -1,7 +1,8 @@
 #!/usr/bin/python
-#Navid Kayhani (navidk381) | May 20,2020
-'''This script listens to /gazebo/default/pose/info on gz topics
- and publishes it on a ROS topic'''
+# Navid Kayhani (navidk381) | May 20,2020
+'''This script listens to /gazebo/default/pose/info on gazebo topics
+ and publishes PoseStamped messages on a ROS topic'''
+#TODO : make the ros node intrupte 
 import trollius as asyncio
 from trollius import From
 import pygazebo
@@ -17,12 +18,11 @@ from dsl__utilities__msg.msg import StateData
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
 from std_msgs.msg import String, UInt32
 #################################
-
 NODE_NAME = 'gz_pose_publisher'
-RATE = 200.0  # Hz
-
+RATE = 60.0  # Hz
 ##############################
-class GazeboMessageSubscriber: 
+
+class GazeboMessageSubscriber:
 
     def __init__(self, timeout=30):
         self.loop = asyncio.get_event_loop()
@@ -44,8 +44,10 @@ class GazeboMessageSubscriber:
                 pass
             yield From(asyncio.sleep(1))
 
-        if connected: 
-            self.poses_subscriber = self.manager.subscribe('/gazebo/default/pose/info', 'gazebo.msgs.PosesStamped', self.poses_callback)
+        if connected:
+            self.gz_publisher.initialized = True
+            self.poses_subscriber = self.manager.subscribe(
+                '/gazebo/default/pose/info', 'gazebo.msgs.PosesStamped', self.poses_callback)
 
             yield From(self.poses_subscriber.wait_for_connection())
             self.running = True
@@ -55,55 +57,71 @@ class GazeboMessageSubscriber:
             raise Exception("Timeout connecting to Gazebo.")
 
     def poses_callback(self, data):
-        # message = pygazebo.msg.gz_string_pb2.GzString.FromString(data)
-        # print('Received message:', message.data)
-        self.poses_stamped = pygazebo.msg.poses_stamped_pb2.PosesStamped() #check the msg for more detail (poses_stamped_pb2.py)
+        # check the msg for more detail (poses_stamped_pb2.py)
+        self.poses_stamped = pygazebo.msg.poses_stamped_pb2.PosesStamped()
         s = self.poses_stamped.FromString(data)
-        self.gz_publisher.initialized = True
-        test_string= String()
-        test_string.data ="hello"
-        self.gz_publisher.publish(test_string)
-        self.rate.sleep()
+        gz_pose_msg = s.pose[0]
+        if not rospy.is_shutdown():
+            self.gz_publisher.publish(gz_pose_msg)
+            self.rate.sleep()
 
+#############################
 
-
-############################# 
 class GzPublisher(object):
     ''' Publishes the pose of bebop despite the wired incompatibility of Sphinx'''
+
     def __init__(self):
-        # initialize your instant    
-        #example1 = 
+        # initialize your instant
         self.initialized = False
-        #example2 = 
         self.last_time = rospy.Time.now()
-        
+
         # Publishers.
-        # Specify the Topic Name and define publihsers 
-        #example 
-        topic_name = '/gazebo/' + "bebop" + '/' + "string"
-        msg_type = String
-        #compose PoseStamped
+        # Specify the Topic Name and define the publihsers
+        topic_name = '/gazebo/' + "bebop/" + "pose"
+        msg_type = PoseStamped
         queue_size = 10
-        self.pose_pub = rospy.Publisher(topic_name, msg_type,   
-                                             queue_size= queue_size)
+        self.pose_pub = rospy.Publisher(topic_name, msg_type,
+                                        queue_size=queue_size)
 
-
-    def publish(self,msg):
+    def publish(self, msg):
         ''' Publish pose estimate. '''
         if not self.initialized:
             return
-        
-        # Do somthing 
-
         # Create a message and publish it (make sure you have checked the message skeleton)
-        # msg = compose_msg(t, q
-        #publihster.publish(msg)
-        self.pose_pub.publish(msg)
+        
+        ros_msg = self.compose_ros_PoseStamped_msg(msg)
+        # publihster.publish(msg)
+        self.pose_pub.publish(ros_msg)
+
+
+    def compose_ros_PoseStamped_msg(self, gz_msg_PosesStamped):
+        # for more information about the parsed Gazebo messages, please see
+        # <your_ros_ws>/gz_listener/src/py3gazebo_x/pygazebo/msg/poses_stamped_pb2.py ([Hint] Ctrl+p for file search in VSCode)
+        # For the ROS message you should check: http://docs.ros.org/melodic/api/std_msgs/html/msg/Header.html
+        msg = PoseStamped()
+
+        # Header.
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = 'world'
+
+        # Pose.
+        # Position
+        msg.pose.position = Point(gz_msg_PosesStamped.position.x,
+                                       gz_msg_PosesStamped.position.y,
+                                       gz_msg_PosesStamped.position.z)
+
+        # Orientation
+        msg.pose.orientation = Quaternion(gz_msg_PosesStamped.orientation.x,
+                                               gz_msg_PosesStamped.orientation.y,
+                                               gz_msg_PosesStamped.orientation.z,
+                                               gz_msg_PosesStamped.orientation.w)
+        return msg
+
 
 def main():
     gztest = GazeboMessageSubscriber()
     gztest.loop.run_until_complete(gztest.connect())
 
+
 if __name__ == "__main__":
     main()
-        
