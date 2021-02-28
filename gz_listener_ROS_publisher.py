@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # Navid Kayhani (navidk381) | May 20,2020
-'''This script listens to /gazebo/default/pose/info on gazebo topics
- and publishes PoseStamped messages on a ROS topic'''
+'''This script listens to /gazebo/default/pose/info on Gazebo topics
+ and publishes PoseStamped messages on a ROS topic (/gazebo/bebop/pose)
+ and TransformStamped on /gazebo/vicon/{model}/{model}'''
 
 import trollius as asyncio
 from trollius import From
@@ -15,11 +16,12 @@ import numpy as np
 import rospy
 
 from dsl__utilities__msg.msg import StateData
-from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
+from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped, TransformStamped
 from std_msgs.msg import String, UInt32
 #################################
 NODE_NAME = 'gz_pose_publisher'
 RATE = 60.0  # Hz
+DEFAULT_MODEL = 'Bebop_2_58_cons'
 ##############################
 
 class GazeboMessageSubscriber:
@@ -76,16 +78,27 @@ class GzPublisher(object):
     def __init__(self):
         # initialize your instant
         self.initialized = False
-        self.last_time = rospy.Time.now()
+        self.point = np.zeros(3)  # Translation error.
+        self.quaternion = np.zeros(4)    # Roll-pitch-yaw error.
+        self.model = rospy.get_param('~model', DEFAULT_MODEL)
+        
 
         # Publishers.
-        # Specify the Topic Name and define the publihsers
+        # Publish gz world as PoseStamped
         topic_name = '/gazebo/' + "bebop/" + "pose"
         msg_type = PoseStamped
         queue_size = 10
         self.pose_pub = rospy.Publisher(topic_name, msg_type,
                                         queue_size=queue_size)
-
+        ##############################3
+        # Publish transform
+        #Publish the same thing as TransformStamped
+        topic_nameT = '/gazebo/vicon/{}/{}'.format(self.model, self.model)
+        msg_typeT = TransformStamped
+        queue_sizeT = 10
+        self.pose_pubT = rospy.Publisher(topic_nameT, msg_typeT,
+                                        queue_size=queue_sizeT)
+        
     def publish(self, msg):
         ''' Publish pose estimate. '''
         if not self.initialized:
@@ -93,8 +106,37 @@ class GzPublisher(object):
         # Create a message and publish it (make sure you have checked the message skeleton)
         
         ros_msg = self.compose_ros_PoseStamped_msg(msg)
+        ros_msgT = self.compose_ros_TransformStamped_msg(msg)
         # publihster.publish(msg)
         self.pose_pub.publish(ros_msg)
+        self.pose_pubT.publish(ros_msgT)
+
+    def compose_ros_TransformStamped_msg (self, gz_msg_PosesStamped):
+         ######## Create a TransformStamped msg ### 
+        msg = TransformStamped()
+
+        # Header.
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = 'world'
+        #child_frame_id.
+        msg.child_frame_id = '/gazebo/vicon/{}/{}'.format(self.model, self.model)
+        # Transform.
+        # translation 
+        #NOTE the camera transform has a translation Tcamera_to_baselink [0.20, 0.0, 0.0], which should have been [0.10, 0.0, 0.0].
+	#It means that the camera is 10cm farther than the actual camera location and in front of the drone.
+    #UPDATE: I deleted the +0.10 for x and y and modified the URDF file for bebop description 
+	#TODO: Make sure this does not affect the ekf results.
+        msg.transform.translation= Point(gz_msg_PosesStamped.position.x, # to compensate the camera pose descripency
+                                       gz_msg_PosesStamped.position.y,
+                                       gz_msg_PosesStamped.position.z + 0.045)  # This 0.045(m) is because of the transfrom between  
+                                                                                # the frame attached to the model and its "link" in Gazebo.
+                                                                                # The link is 0.045m above the model's frame.  
+        # rotation
+        msg.transform.rotation = Quaternion(gz_msg_PosesStamped.orientation.x,
+                                               gz_msg_PosesStamped.orientation.y,
+                                               gz_msg_PosesStamped.orientation.z,
+                                               gz_msg_PosesStamped.orientation.w)
+        return msg
 
 
     def compose_ros_PoseStamped_msg(self, gz_msg_PosesStamped):
@@ -107,11 +149,18 @@ class GzPublisher(object):
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = 'world'
 
-        # Pose.
-        # Position
-        msg.pose.position = Point(gz_msg_PosesStamped.position.x,
+        # Pose.            
+        # Position      
+	
+        #NOTE the camera transform has a translation Tcamera_to_baselink [0.20, 0.0, 0.0], which should have been [0.10, 0.0, 0.0].
+	#It means that the camera is 10cm farther than the actual camera location and in front of the drone. 
+    #UPDATE: I deleted the +0.10 for x and y and modified the URDF file for bebop description 
+	#TODO: Make sure this does not affect the ekf results.
+        msg.pose.position = Point(gz_msg_PosesStamped.position.x, # to compensate the camera pose descrepency 
                                        gz_msg_PosesStamped.position.y,
-                                       gz_msg_PosesStamped.position.z)
+                                       gz_msg_PosesStamped.position.z + 0.045)  # This 0.045(m) is because of the transfrom between  
+                                                                                # the frame attached to the model and its "link" in Gazebo.
+                                                                                # The link is 0.045m above the model's frame.  
 
         # Orientation
         msg.pose.orientation = Quaternion(gz_msg_PosesStamped.orientation.x,
