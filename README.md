@@ -1,3 +1,16 @@
+# Py3Gazebo_x: A modified Gazebo-ROS bridge 
+
+This is a modified version of a repo called `Py3Gazebo`. See [Py3Gazebo README.md](src/py3gazebo_x/README.md).
+
+Parrot-Sphinx simulator does NOT support [gazebo_ros_pkgs](http://wiki.ros.org/gazebo_ros_pkgs), which is a set of ROS packages that provide the necessary interfaces to simulate a robot in the Gazebo 3D rigid body simulator for robots. It integrates with ROS using ROS messages, services and dynamic reconfigure.   
+
+This folder has to be **cut and paste** to a **catkin workspace** (e.g., next to dsl__projects__construction package). When you `catkin build` this, you can have a Gazebo-ROS bridge/interface that is compatible with Parrot-Sphinx simulator. Using this repo you can listen to the ground truth data published in the Gazebo environment (e.g., `/gazebo/default/pose/info`) and publish it as ROS message. 
+
+You need to have `trollius` installed on your machine for the  asynchronous capabilities required. 
+
+The main module you can refer to is `gz_listener_ROS_publisher.py`
+
+-----------------
 # Py3Gazebo
 
 Their hasn't been an activity of this parent class so this fork provides the following changes,
